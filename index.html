@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>チャットアプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントの読み込み */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        /* (変更) チャット履歴の高さを柔軟に */
+        #chat-history {
+            scroll-behavior: smooth;
+        }
+        
+        /* (変更) メッセージバブルのスタイル */
+        .user-message {
+            background-color: #2563eb; /* bg-blue-600 */
+            color: white;
+            align-self: flex-end;
+            border-radius: 1.5rem 1.5rem 0.25rem 1.5rem; /* rounded-3xl rounded-bl-lg */
+        }
+        .model-message {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            color: #1f2937; /* text-gray-800 */
+            align-self: flex-start;
+            border-radius: 1.5rem 1.5rem 1.5rem 0.25rem; /* rounded-3xl rounded-br-lg */
+        }
+
+        /* AIメッセージ内のpタグのマージンをリセット */
+        .model-message p {
+            margin: 0;
+        }
+        .model-message ul {
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }
+        /* (追加) 見出しのスタイル */
+        .model-message h1 {
+            font-size: 1.5rem; /* text-2xl */
+            font-weight: 700;
+            margin-top: 0.75em;
+            margin-bottom: 0.25em;
+        }
+        .model-message h2 {
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 700;
+            margin-top: 0.75em;
+            margin-bottom: 0.25em;
+        }
+        .model-message h3 {
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 700;
+            margin-top: 0.75em;
+            margin-bottom: 0.25em;
+        }
+        .model-message h4 {
+            font-size: 1rem; /* text-base */
+            font-weight: 700;
+            margin-top: 0.75em;
+            margin-bottom: 0.25em;
+        }
+        
+        /* (追加) プレビュー画像のスタイル */
+        .preview-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.375rem; /* rounded-md */
+        }
+        .preview-remove-btn {
+            position: absolute;
+            top: -0.5rem; /* -top-2 */
+            right: -0.5rem; /* -right-2 */
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 50%;
+            width: 1.5rem; /* w-6 */
+            height: 1.5rem; /* h-6 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.875rem; /* text-sm */
+            line-height: 1;
+        }
+        /* (追加) チャット内の画像のスタイル */
+        .chat-image {
+            max-width: 100%; /* 親の幅に合わせる */
+            height: auto; /* アスペクト比を維持 */
+            border-radius: 0.375rem; /* rounded-md */
+        }
+
+        /* (追加) ローディングドット（タイピング中...） */
+        .loader-dots span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #6b7280; /* text-gray-500 */
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loader-dots .dot-1 {
+            animation-delay: -0.32s;
+        }
+        .loader-dots .dot-2 {
+            animation-delay: -0.16s;
+        }
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+            } 40% {
+                transform: scale(1.0);
+            }
+        }
+
+        /* (追加) スクロールバーのスタイル（モダンブラウザ用） */
+        #chat-history::-webkit-scrollbar,
+        #session-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-history::-webkit-scrollbar-track,
+        #session-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #chat-history::-webkit-scrollbar-thumb,
+        #session-list::-webkit-scrollbar-thumb {
+            background-color: #d1d5db; /* bg-gray-300 */
+            border-radius: 20px;
+        }
+        
+        /* (追加) 履歴サイドバーのスタイル */
+        .session-item {
+            display: block;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            color: #374151; /* text-gray-700 */
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .session-item:hover {
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        .session-item.active {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            font-weight: 600;
+        }
+
+        /* (変更) Google検索トグルのスタイル */
+        .toggle-checkbox {
+            /* チェックボックス自体は非表示 */
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+        .toggle-label {
+            /* スイッチの背景 */
+            width: 2.5rem; /* w-10 */
+            height: 1.5rem; /* h-6 */
+            display: block;
+            background-color: #d1d5db; /* bg-gray-300 */
+            border-radius: 9999px; /* rounded-full */
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .toggle-dot {
+            /* スイッチのドット */
+            content: '';
+            position: absolute;
+            top: 0.125rem; /* top-0.5 */
+            left: 0.125rem; /* left-0.5 */
+            width: 1.25rem; /* w-5 */
+            height: 1.25rem; /* h-5 */
+            background-color: white;
+            border-radius: 9999px; /* rounded-full */
+            transition: transform 0.2s ease-in-out;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            /* オンになったときの背景色 */
+            background-color: #2563eb; /* bg-blue-600 */
+        }
+        .toggle-checkbox:checked + .toggle-label .toggle-dot {
+            /* (修正) オンになったときに右に移動 */
+            transform: translateX(1rem); /* w-10 (2.5rem) - w-5 (1.25rem) - left/right (0.125rem*2) = 1rem */
+        }
+
+
+        /* (追加) テーブルのスタイル */
+        .model-message table {
+            width: auto;
+            border-collapse: collapse;
+            margin-top: 1em;
+            margin-bottom: 1em;
+            border: 1px solid #d1d5db; /* gray-300 */
+            font-size: 0.875rem; /* text-sm */
+        }
+        .model-message th, .model-message td {
+            border: 1px solid #d1d5db; /* gray-300 */
+            padding: 0.5rem 0.75rem; /* py-2 px-3 */
+            text-align: left;
+        }
+        .model-message th {
+            background-color: #f3f4f6; /* gray-100 */
+            font-weight: 600;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 flex justify-center items-center h-screen p-4">
+
+    <!-- (変更) 全体コンテナ (サイドバー + チャットエリア) -->
+    <div class="flex w-full h-full max-w-5xl bg-white rounded-lg shadow-xl overflow-hidden">
+        
+        <!-- (追加) 履歴サイドバー -->
+        <div class="w-64 border-r flex flex-col">
+            <!-- 新しいチャットボタン -->
+            <div class="p-4 border-b">
+                <button id="new-chat-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    <span>新しいチャット</span>
+                </button>
+            </div>
+            <!-- 履歴一覧 -->
+            <h2 class="text-sm font-semibold text-gray-600 px-4 pt-4 pb-2">チャット履歴</h2>
+            <div id="session-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- 履歴がJSによってここに追加されます -->
+            </div>
+        </div>
+
+        <!-- (変更) チャットエリアコンテナ -->
+        <div class="flex-1 flex flex-col">
+            
+            <!-- (変更) ヘッダー -->
+            <div class="border-b p-4">
+                <!-- (変更) モデル選択をヘッダーに移動 -->
+                <div class="max-w-xs mx-auto">
+                    <label for="model-select" class="block text-xs font-medium text-gray-500 mb-1 text-center">使用モデル</label>
+                    <select id="model-select" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
+                        <!-- 
+                        (変更) ユーザーが提供した画像（2つ）に基づいてモデルリストを更新
+                        -->
+                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                        <!-- (変更) gemini-2.5-flash-lite をデフォルト（selected）に設定 -->
+                        <option value="gemini-2.5-flash-lite" selected>gemini-2.5-flash-lite</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- (変更) チャット履歴エリア (flex-1で残りの高さを埋める) -->
+            <div id="chat-history" class="flex-1 p-4 space-y-4 overflow-y-auto flex flex-col">
+                <!-- メッセージがここに追加されます -->
+            </div>
+
+            <!-- (追加) タイピング中... の表示エリア -->
+            <div id="typing-indicator" class="p-4 pt-0 hidden">
+                <div class="model-message p-3 rounded-lg max-w-xs w-fit">
+                    <div class="loader-dots">
+                        <span class="dot-1"></span>
+                        <span class="dot-2"></span>
+                        <span class="dot-3"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- (変更) 入力エリアコンテナ -->
+            <div class="border-t p-4 bg-white">
+                <!-- (追加) 画像プレビューエリア -->
+                <div id="image-preview-container" class="mb-2 ml-12 relative w-20 h-20 hidden">
+                    <!-- プレビューがここに挿入されます -->
+                </div>
+
+                <!-- エラーメッセージ -->
+                <div id="error-message" class="text-red-500 mb-2 hidden text-sm"></div>
+
+                <!-- (追加) Google検索トグル -->
+                <div class="flex items-center justify-end space-x-2 mb-2 pr-2">
+                    <label for="google-search-toggle" class="text-sm font-medium text-gray-700">Google検索</label>
+                    <!-- (変更) トグルのHTML構造を修正 -->
+                    <div class="relative inline-block w-10 align-middle select-none">
+                        <input type="checkbox" name="google-search-toggle" id="google-search-toggle" class="toggle-checkbox"/>
+                        <label for="google-search-toggle" class="toggle-label">
+                            <!-- (追加) トグルスイッチの丸いドット -->
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- (変更) 入力フォーム -->
+                <div class="flex items-center space-x-2">
+                    <!-- (追加) 画像添付ボタン -->
+                    <label for="image-input" class="cursor-pointer text-gray-500 hover:text-blue-500 p-2 rounded-full hover:bg-gray-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"></path></svg>
+                    </label>
+                    <input type="file" id="image-input" accept="image/*" class="hidden">
+
+                    <textarea id="prompt-input" class="w-full px-4 py-2 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" rows="1" placeholder="メッセージを送信..."></textarea>
+                    <button id="send-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-full transition duration-300 ease-in-out disabled:opacity-50 flex items-center justify-center">
+                        <!-- (変更) 送信アイコンに変更 -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-horizontal"><path d="m3 3 3 9-3 9 19-9Z"/><path d="M6 12h16"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // (変更) 複数のAPIキーを管理
+        const apiKeys = [
+            "AIzaSyBXk1V6Ylvz39zVrhnDd-edBZOySHAP9cE", // プライマリAPIキー
+            "AIzaSyDpZlI3OSpfskjdUcR2n2T1HSwKoN9OVe4"  // サブAPIキー
+        ];
+        let currentApiKeyIndex = 0; // 現在使用中のAPIキーのインデックス
+        
+        // --- (変更) 履歴管理ロジック ---
+        let chatSessions = []; // すべての会話セッションを保存
+        let activeSessionId = null; // 現在アクティブな会話のID
+        let currentChatHistory = []; // 現在表示中の会話履歴（chatHistory -> currentChatHistory に名前変更）
+
+        // (変更) localStorageから履歴を読み込む
+        function loadSessionsFromStorage() {
+            const savedSessions = localStorage.getItem('chatAppSessions');
+            if (savedSessions) {
+                try {
+                    chatSessions = JSON.parse(savedSessions);
+                } catch (e) {
+                    console.error("セッション履歴の解析に失敗しました:", e);
+                    chatSessions = [];
+                }
+            }
+            activeSessionId = localStorage.getItem('activeSessionId');
+        }
+
+        // (変更) 現在のセッション（currentChatHistory）を chatSessions に保存する
+        function saveCurrentSession() {
+            if (!activeSessionId) return; // アクティブなセッションがなければ保存しない
+
+            const sessionIndex = chatSessions.findIndex(s => s.id === activeSessionId);
+            if (sessionIndex > -1) {
+                // 既存セッションを更新
+                chatSessions[sessionIndex].history = currentChatHistory;
+                // (更新) タイトルを更新（最初のユーザーの質問）
+                const firstUserMessage = currentChatHistory.find(m => m.role === 'user' && m.parts.find(p => p.text && p.text.trim() !== ''));
+                if (firstUserMessage) {
+                    chatSessions[sessionIndex].title = firstUserMessage.parts.find(p => p.text).text.substring(0, 30);
+                } else {
+                    // (変更) テキストがない場合（画像のみ）のタイトル
+                    const firstUserImage = currentChatHistory.find(m => m.role === 'user' && m.parts.find(p => p.inlineData));
+                    if (firstUserImage && chatSessions[sessionIndex].title === "新しいチャット") {
+                         chatSessions[sessionIndex].title = "画像チャット";
+                    }
+                }
+            } else {
+                // 新規セッションとして追加
+                const firstUserMessage = currentChatHistory.find(m => m.role === 'user' && m.parts.find(p => p.text && p.text.trim() !== ''));
+                let title = "新しいチャット";
+                if (firstUserMessage) {
+                    title = firstUserMessage.parts.find(p => p.text).text.substring(0, 30);
+                } else {
+                    const firstUserImage = currentChatHistory.find(m => m.role === 'user' && m.parts.find(p => p.inlineData));
+                    if (firstUserImage) {
+                        title = "画像チャット";
+                    }
+                }
+                
+                chatSessions.unshift({ // 配列の先頭に追加
+                    id: activeSessionId,
+                    title: title,
+                    history: currentChatHistory
+                });
+            }
+            
+            // localStorageに保存
+            localStorage.setItem('chatAppSessions', JSON.stringify(chatSessions));
+            localStorage.setItem('activeSessionId', activeSessionId);
+        }
+
+        // (追加) 最初のAIの挨拶メッセージ
+        const createInitialMessage = () => ({
+            role: "model",
+            parts: [{ text: "こんにちは！ 何かお話ししましょう。" }],
+            modelNameForUI: "AI"
+        });
+        
+        // (変更) API呼び出し関数（リトライロジックを修正）
+        async function callGeminiAPI(payload, apiUrl, modelName = "選択されたモデル") {
+            let retries = 0;
+            const maxRetries = 5;
+            let delay = 1000; // 1秒から開始
+
+            while (retries < maxRetries) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        return await response.json(); //  succes
+                    }
+
+                    // 4xx系のエラー（リトライ無効）
+                    if (response.status >= 400 && response.status < 500) {
+                        // (変更) 4xxエラーの場合、レスポンスがJSON形式とは限らないため、堅牢なエラーハンドリングを行う
+                        let errorBody;
+                        try {
+                            errorBody = await response.json(); // JSONとして解析を試みる
+                            // JSONからエラーメッセージを取得
+                            // (変更) 404エラーの場合、より具体的なメッセージをスロー
+                            if (response.status === 404) {
+                                throw new Error(`モデル '${modelName}' が見つかりません (ステータス: 404)。`);
+                            }
+                            // (追加) 400エラーの場合、APIキーの権限問題の可能性を提示
+                            if (response.status === 400) {
+                                throw new Error(errorBody.error.message || `APIリクエスト失敗 (ステータス: 400)。APIキーがこのモデルの使用を許可されていない可能性があります。`);
+                            }
+                            throw new Error(errorBody.error.message || `APIリクエスト失敗 (ステータス: ${response.status})`);
+                        } catch (e) {
+                            // (変更) response.json() が失敗した場合 (e.g., 403 Forbidden with HTML body)
+                            // 常にリトライ不可のエラーとしてスローする
+                            console.error("Failed to parse JSON response for 4xx error:", e);
+                            throw new Error(`APIリクエスト失敗 (ステータス: ${response.status})。レスポンスがJSONではありませんでした。APIキーが正しいか、HTTPリファラ設定を確認してください。`);
+                        }
+                    }
+                    
+                    // 5xx系または429（リトライ有効）
+                    // 4xx系でなければ、リトライ対象 (5xx, 429など) とみなし、ループの最後でリトライ
+                    
+                } catch (error) {
+                    // (変更) ネットワークエラー(CORS違反など)は即座にスロー
+                    if (error instanceof TypeError) {
+                        // 'Failed to fetch' は CORS エラーの典型
+                        // (変更) エラーメッセージをさらに具体的に
+                        throw new Error(`ネットワークリクエストに失敗しました (CORS/HTTPリファラ エラー)。これはコードの問題ではありません。**Google Cloud ConsoleでAPIキーの設定を開き、「HTTPリファラ」制限にワイルドカード（例: '*.scf.usercontent.goog'）を追加してください。**`);
+                    }
+
+                    // (変更) 4xx系のエラー（上記でスローされた）は、リトライせずに即座に再スローする
+                    if (error.message.includes("API key") || 
+                        error.message.includes("Method doesn't allow") ||
+                        error.message.includes("ステータス:") || // (修正) "ステータス:" が含まれるエラーはリトライしない
+                        error.message.includes("モデル")) { // "モデル" が含まれるエラーはリトライしない
+                        throw error;
+                    }
+                    
+                    // その他の予期せぬエラー (catchブロック内でリトライ上限に達した場合)
+                    if (retries >= maxRetries - 1) {
+                         // (変更) 予期せぬエラーの詳細もメッセージに含める
+                         console.error("Retrying failed due to unexpected error:", error);
+                         throw new Error(`リクエストが最大リトライ回数に達しました (予期せぬエラー: ${error.message})。`);
+                    }
+                }
+
+                // (変更) 4xx以外のエラー (5xx, 429) または 予期せぬエラー でリトライ上限に達した場合
+                if (retries >= maxRetries - 1) {
+                    throw new Error("リクエストがタイムアウトしました (5xxサーバーエラーまたは429レート制限の可能性があります)。Google Cloud ConsoleでAPIキーの『HTTPリファラ』制限が正しく設定されているか（*.scf.usercontent.goog を許可しているか）を再確認してください。");
+                }
+                
+                // リトライ待機
+                console.log(`API request failed (will retry), attempt ${retries + 1}/${maxRetries}`);
+                await new Promise(resolve => setTimeout(resolve, delay * (2 ** retries)));
+                retries++;
+            }
+            
+            // (変更) ループを抜けたが成功しなかった場合（理論上ここには来ないはずだが念のため）
+            throw new Error("APIリクエストが最大リトライ回数に達しました (不明なエラー)。");
+        } 
+
+        // --- DOM要素の取得 ---
+        const sendButton = document.getElementById('send-button');
+        const promptInput = document.getElementById('prompt-input');
+        const chatHistoryDiv = document.getElementById('chat-history');
+        const errorMessage = document.getElementById('error-message');
+        const typingIndicator = document.getElementById('typing-indicator'); // (追加)
+        const modelSelect = document.getElementById('model-select');
+        const imageInput = document.getElementById('image-input');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const sessionListDiv = document.getElementById('session-list'); // (追加)
+        const newChatBtn = document.getElementById('new-chat-btn'); // (追加)
+        const googleSearchToggle = document.getElementById('google-search-toggle'); // (追加)
+        
+        let attachedImageBase64 = null; // 添付された画像をBase64で保存
+
+        // --- Markdown & UI 関連関数 (変更なし) ---
+        function sanitize(text) {
+            if (!text) return '';
+            // (修正) SyntaxErrorを修正
+            return text.toString()
+                       .replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#039;');
+        }
+        function formatSimpleMarkdown(text) {
+            let sanitizedText = sanitize(text);
+
+            // **太字** を <strong> に変換
+            let html = sanitizedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            // リスト (* item) を <ul><li> に変換
+            const lines = html.split('\n');
+            let inList = false;
+            let inTable = false; // (追加) テーブル解析中のフラグ
+            let finalHtml = ''; // 最終的なHTMLを構築する変数
+            
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                // (追加) テーブル行の処理
+                if (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) {
+                    if (inList) { // リストを閉じる
+                        finalHtml += '</ul>';
+                        inList = false;
+                    }
+
+                    // | でセルを分割 (最初と最後の空要素を削除)
+                    const cells = trimmedLine.split('|').slice(1, -1).map(s => s.trim());
+
+                    // セパレータ行 ( | --- | --- | ) かどうかをチェック
+                    const isSeparator = cells.every(cell => /^-+$/.test(cell));
+
+                    if (!inTable) {
+                        // テーブルの開始 (ヘッダー行)
+                        if (isSeparator) continue; // ヘッダーなしでセパレータが来たら無視
+                        
+                        inTable = true;
+                        finalHtml += '<table><thead><tr>';
+                        cells.forEach(cell => {
+                            finalHtml += '<th>' + cell + '</th>';
+                        });
+                        finalHtml += '</tr></thead><tbody>';
+                    } else {
+                        // テーブルの途中
+                        if (isSeparator) {
+                            continue; // セパレータ行は読み飛ばす
+                        }
+                        
+                        // ボディ行
+                        finalHtml += '<tr>';
+                        cells.forEach(cell => {
+                            finalHtml += '<td>' + cell + '</td>';
+                        });
+                        finalHtml += '</tr>';
+                    }
+                } 
+                // (変更) テーブル行ではない場合の処理
+                else {
+                    if (inTable) { // テーブルを閉じる
+                        finalHtml += '</tbody></table>';
+                        inTable = false;
+                    }
+                    if (inList && !trimmedLine.startsWith('* ')) { // リストを閉じる
+                        finalHtml += '</ul>';
+                        inList = false;
+                    }
+
+                    // (変更) 見出しの処理 (H1, H2, H3, H4)
+                    if (trimmedLine.startsWith('# ')) {
+                        finalHtml += '<h1>' + trimmedLine.substring(2) + '</h1>';
+                    } 
+                    else if (trimmedLine.startsWith('## ')) {
+                        finalHtml += '<h2>' + trimmedLine.substring(3) + '</h2>';
+                    }
+                    else if (trimmedLine.startsWith('### ')) {
+                        finalHtml += '<h3>' + trimmedLine.substring(4) + '</h3>';
+                    }
+                    else if (trimmedLine.startsWith('#### ')) {
+                        finalHtml += '<h4>' + trimmedLine.substring(5) + '</h4>';
+                    }
+                    // (変更) リストの処理を else if に
+                    else if (trimmedLine.startsWith('* ')) {
+                        if (!inList) {
+                            finalHtml += '<ul>';
+                            inList = true;
+                        }
+                        finalHtml += '<li class="ml-5 list-disc">' + trimmedLine.substring(2) + '</li>';
+                    } 
+                    // (変更) 段落の処理
+                    else {
+                        if (trimmedLine.length > 0) {
+                            finalHtml += '<p>' + trimmedLine + '</p>';
+                        } else {
+                            finalHtml += '<br>';
+                        }
+                    }
+                }
+            }
+            // (追加) ループ終了後にテーブルやリストが開いたままなら閉じる
+            if (inTable) {
+                finalHtml += '</tbody></table>';
+            }
+            if (inList) {
+                finalHtml += '</ul>';
+            }
+
+            // <p><br></p> のような不要なタグを削除
+            return finalHtml.replace(/<p><br><\/p>/g, '<br>').replace(/<p><\/p>/g, '');
+        }
+        function addMessageToUI(sender, text, modelName = null, imageUrl = null) {
+            const messageDiv = document.createElement('div');
+            // (変更) バブルのスタイルクラスを変更
+            messageDiv.classList.add('p-3', 'max-w-xs', 'w-fit', 'text-sm');
+            
+            if (sender === 'user') {
+                messageDiv.classList.add('user-message');
+                
+                // (追加) ユーザーが画像を添付した場合
+                if (imageUrl) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    // (変更) 'preview-image' -> 'chat-image'
+                    img.classList.add('chat-image', 'mb-2');
+                    messageDiv.appendChild(img);
+                }
+
+                // ユーザーのメッセージはサニタイズして改行を <br> に
+                // (変更) テキストが空でない場合のみ追加
+                if (text && text.trim().length > 0) {
+                    const messageText = document.createElement('span');
+                    messageText.innerHTML = sanitize(text).replace(/\n/g, '<br>');
+                    messageDiv.appendChild(messageText);
+                }
+
+            } else { // 'if (sender === 'user')' に対する 'else'
+                messageDiv.classList.add('model-message');
+
+                // (追加) AIモデル名のラベルを追加
+                if (modelName && modelName !== 'AI') { // (変更) 'AI'のときはラベル非表示
+                    const modelLabel = document.createElement('span');
+                    modelLabel.textContent = modelName;
+                    modelLabel.classList.add('text-xs', 'font-medium', 'text-gray-600', 'block', 'mb-1');
+                    messageDiv.appendChild(modelLabel);
+                }
+                
+                // (追加) メッセージ本文を別のspanに入れる
+                const messageText = document.createElement('span');
+                // (変更) AIのメッセージはMarkdownをHTMLに変換
+                messageText.innerHTML = formatSimpleMarkdown(text);
+                messageDiv.appendChild(messageText);
+            }
+            
+            if (chatHistoryDiv) {
+                chatHistoryDiv.appendChild(messageDiv);
+                // 履歴を一番下にスクロール
+                chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;
+            } else {
+                console.error("チャット履歴のDIVが見つかりません。");
+            }
+        }
+        function clearAttachedImage() {
+            attachedImageBase64 = null;
+            imageInput.value = null; // ファイル選択をリセット
+            imagePreviewContainer.innerHTML = '';
+            imagePreviewContainer.classList.add('hidden');
+        }
+        imageInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    attachedImageBase64 = e.target.result;
+                    
+                    // プレビューを表示
+                    imagePreviewContainer.innerHTML = ''; // 既存のプレビューをクリア
+                    const img = document.createElement('img');
+                    img.src = attachedImageBase64;
+                    img.classList.add('preview-image');
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.textContent = '×';
+                    removeBtn.classList.add('preview-remove-btn');
+                    removeBtn.onclick = clearAttachedImage;
+                    
+                    imagePreviewContainer.appendChild(img);
+                    imagePreviewContainer.appendChild(removeBtn);
+                    imagePreviewContainer.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file); // 画像をBase64データURLとして読み込む
+            }
+        });
+
+        // --- (変更) メインロジック ---
+
+        // (追加) サイドバーの履歴一覧を再描画する
+        function renderSessionList() {
+            sessionListDiv.innerHTML = ''; // 既存のリストをクリア
+            chatSessions.forEach(session => {
+                const item = document.createElement('a');
+                item.href = '#';
+                item.textContent = session.title || '（無題のチャット）';
+                item.classList.add('session-item');
+                if (session.id === activeSessionId) {
+                    item.classList.add('active');
+                }
+                item.onclick = (e) => {
+                    e.preventDefault();
+                    loadSession(session.id);
+                };
+                sessionListDiv.appendChild(item);
+            });
+        }
+        
+        // (変更) ページ読み込み時にチャット履歴をUIに表示する
+        function loadChatHistoryUI() {
+            chatHistoryDiv.innerHTML = ''; // 既存の表示をクリア
+            
+            currentChatHistory.forEach(message => {
+                let text = '';
+                let imageUrl = null;
+                let modelName = null;
+
+                // parts配列からテキスト部分を取得
+                const textPart = message.parts.find(part => part.text);
+                if (textPart) text = textPart.text;
+
+                if (message.role === 'user') {
+                    // parts配列から画像部分を取得
+                    const imagePart = message.parts.find(part => part.inlineData);
+                    if (imagePart && imagePart.inlineData) {
+                        // Base64データから Data URL を復元
+                        imageUrl = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+                    }
+                    addMessageToUI('user', text, null, imageUrl);
+
+                } else if (message.role === 'model') {
+                    // 保存されたモデル名を取得
+                    modelName = message.modelNameForUI || 'AI'; // 保存されていればそれを使い、なければ 'AI'
+                    addMessageToUI('model', text, modelName, null);
+                }
+            });
+            // 履歴の最後にスクロール
+            chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;
+        }
+
+        // (追加) 特定のセッションをロードする
+        function loadSession(sessionId) {
+            // 現在のチャットを保存
+            saveCurrentSession();
+            
+            // 新しいセッションをアクティブにする
+            activeSessionId = sessionId;
+            const session = chatSessions.find(s => s.id === sessionId);
+            if (session) {
+                currentChatHistory = session.history;
+            } else {
+                // セッションが見つからない場合 (エラーまたは新しいチャット)
+                startNewChat();
+                return;
+            }
+
+            localStorage.setItem('activeSessionId', activeSessionId);
+            loadChatHistoryUI(); // チャットUIを再描画
+            renderSessionList(); // サイドバーのハイライトを更新
+        }
+
+        // (追加) 新しいチャットを開始する
+        function startNewChat() {
+            // 現在のチャットを保存 (もしあれば)
+            if (activeSessionId) {
+                 saveCurrentSession();
+            }
+
+            // 新しいセッションIDを作成
+            activeSessionId = `session_${Date.now()}`;
+            currentChatHistory = [createInitialMessage()];
+            
+            // UIを更新
+            loadChatHistoryUI();
+            renderSessionList(); // この時点ではまだ保存されてないが、ハイライトを外す効果がある
+            
+            // 新しいIDを保存
+            localStorage.setItem('activeSessionId', activeSessionId);
+            
+            // (メモ) 実際のセッションは、ユーザーが最初のメッセージを送った時に保存される
+        }
+        
+        // --- (変更) イベントリスナー ---
+
+        // 送信ボタンのクリックイベント
+        sendButton.addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            errorMessage.classList.add('hidden'); // (追加) 古いエラーを隠す
+            
+            if (!prompt && !attachedImageBase64) return;
+            
+            const userImageUrl = attachedImageBase64; 
+
+            // (追加) 選択されたモデルを取得
+            const selectedModel = modelSelect.value;
+            const selectedModelText = modelSelect.options[modelSelect.selectedIndex].text;
+            
+            // (変更) 画像送信の可否をチェック (リストにあるモデルはすべて画像OKとして扱う)
+            if (attachedImageBase64) {
+                // (削除) 以前の画像ブロックのロジックを削除
+                // errorMessage.textContent = `エラー: 現在のモデル（${selectedModelText}）は画像を処理できません。画像対応モデル（gemini-pro-visionなど）を選択してください。`;
+                // errorMessage.classList.remove('hidden');
+                // return;
+                
+                // (変更) どのモデルでも画像送信を許可する
+                console.log(`画像付きで ${selectedModel} に送信します。`);
+            }
+
+            // (変更) タイムアウトが続くため、グローバルエンドポイントに戻す
+            // const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
+            // (変更) apiUrlはループ内で構築するため、ここでは削除
+
+            // (変更) ペイロード構築ロジック
+            const userParts = [];
+            if (attachedImageBase64) {
+                try {
+                    const base64Data = attachedImageBase64.split(',')[1];
+                    const mimeType = attachedImageBase64.match(/data:(.*);base64/)[1];
+                    userParts.push({ inlineData: { mimeType: mimeType, data: base64Data } });
+                } catch (e) {
+                    console.error("画像データの解析に失敗しました:", e);
+                    errorMessage.textContent = `エラー: 画像の読み込みに失敗しました。`;
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
+            }
+            userParts.push({ text: prompt });
+
+            // (変更) ユーザーのメッセージをUIと履歴に追加
+            addMessageToUI('user', prompt, null, userImageUrl);
+            currentChatHistory.push({ role: "user", parts: userParts });
+            
+            // 入力欄と画像をクリア
+            promptInput.value = "";
+            clearAttachedImage(); // (追加)
+
+            // (変更) ローディング表示
+            sendButton.disabled = true;
+            typingIndicator.classList.remove('hidden');
+            chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight; // タイピング表示にスクロール
+
+            // (変更) テキスト生成用のペイロード (currentChatHistory を使う)
+            // (修正) 5xxエラーの原因調査: APIに送る履歴から、AIのUI用プロパティを除外する
+            const cleanHistory = currentChatHistory.map(message => ({
+                role: message.role,
+                parts: message.parts
+            }));
+            
+            const payload = {
+                contents: cleanHistory
+            };
+
+            // (追加) Google検索トグルがオンの場合、payloadにtoolsを追加
+            if (googleSearchToggle.checked) {
+                payload.tools = [{ "google_search": {} }];
+            }
+
+            // (変更) APIキーフォールバックロジック
+            let result;
+            let success = false;
+            let lastError = null;
+
+            try {
+                // (変更) 現在のキーインデックスから試行し、失敗したら次のキーを試す
+                for (let i = 0; i < apiKeys.length; i++) {
+                    const keyIndexToTry = (currentApiKeyIndex + i) % apiKeys.length;
+                    const currentApiKey = apiKeys[keyIndexToTry];
+                    
+                    // (変更) APIキーごとにURLを構築
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${currentApiKey}`;
+
+                    try {
+                        result = await callGeminiAPI(payload, apiUrl, selectedModel);
+                        
+                        // 成功した場合
+                        success = true;
+                        currentApiKeyIndex = keyIndexToTry; // 次回からこのキーを優先的に使う
+                        console.log(`APIキー ${keyIndexToTry + 1} で成功しました。`);
+                        break; // ループを抜ける
+
+                    } catch (error) {
+                        console.error(`APIキー ${keyIndexToTry + 1} (${currentApiKey.substring(0, 7)}...) でエラー:`, error.message);
+                        lastError = error;
+
+                        // (変更) 権限系・無効なキーのエラー (400, 403) または CORSエラー (HTTPリファラ制限) の場合、次のキーを試す
+                        if (error.message.includes("ステータス: 400") || 
+                            error.message.includes("ステータス: 403") || // 403 (Forbidden)
+                            error.message.includes("API key not valid") ||
+                            error.message.includes("CORS/HTTPリファラ エラー")) { 
+                            
+                            // 最後のキーで失敗した場合は、ループを抜けてエラーを表示
+                            if (i === apiKeys.length - 1) {
+                                break;
+                            }
+                            continue; // 次のキーでリトライ
+                        } else {
+                            // ネットワークエラー(CORS以外)や5xxサーバーエラーの場合は、キーを変えても無駄なのでリトライを停止
+                            break;
+                        }
+                    }
+                }
+
+                // (変更) 
+                if (success) {
+                    if (result.candidates && result.candidates.length > 0) {
+                        const candidate = result.candidates[0];
+
+                        // (修正) 
+                        if (candidate.content && candidate.content.parts && candidate.content.parts.find(p => p.text)) {
+                            const textPart = candidate.content.parts.find(p => p.text);
+                            const aiText = textPart.text; // We know textPart exists from the check
+
+                            addMessageToUI('model', aiText, selectedModelText);
+                            currentChatHistory.push({ 
+                                role: "model", 
+                                parts: [{ text: aiText }],
+                                modelNameForUI: selectedModelText
+                            });
+                            
+                            saveCurrentSession();
+                            renderSessionList();
+
+                        } else if (candidate.finishReason) {
+                            // (修正) 
+                            const reason = candidate.finishReason;
+                            addMessageToUI('model', `[${reason}] AIからの返答がブロックされました。`, selectedModelText);
+                            // Do not push this to history, as it's not part of the conversation
+                        } 
+                        else {
+                            // (修正) 
+                            // Handle cases where there's no content and no finishReason (e.g., empty parts array)
+                            const aiText = "（AIからテキストの返答がありませんでした）";
+                            addMessageToUI('model', aiText, selectedModelText);
+                             currentChatHistory.push({ 
+                                role: "model", 
+                                parts: [{ text: aiText }],
+                                modelNameForUI: selectedModelText
+                            });
+                            saveCurrentSession();
+                            renderSessionList();
+                        }
+
+                    } else {
+                        // (修正) 
+                        throw new Error("AIから有効な返答（candidates）がありませんでした。");
+                    }
+                } else {
+                    // すべてのキーで失敗した場合
+                    console.error("すべてのAPIキーでチャットエラー:", lastError);
+                    errorMessage.textContent = `エラー: ${lastError.message}`;
+                    errorMessage.classList.remove('hidden');
+                    // 失敗した場合、最後のユーザーメッセージを履歴から削除する（再送信できるように）
+                    currentChatHistory.pop();
+                }
+
+            } catch (error) { // (変更) success/failureロジック全体をtry...catchで囲む
+                // (変更) これは、result.candidates[0].content.parts.find などの
+                // API呼び出し *後* のロジックで発生するエラーをキャッチするため
+                console.error("チャット処理エラー (API呼び出し後):", error);
+                errorMessage.textContent = `エラー: ${error.message}`;
+                errorMessage.classList.remove('hidden');
+                // 失敗した場合、最後のユーザーメッセージを履歴から削除する（再送信できるように）
+                if (!success) { // API呼び出し自体が失敗した場合のみpop
+                    currentChatHistory.pop();
+                }
+            } finally {
+                // (変更) ローディング非表示
+                sendButton.disabled = false;
+                typingIndicator.classList.add('hidden');
+            }
+        });
+
+        // (追加) 新しいチャットボタンのイベント
+        newChatBtn.addEventListener('click', startNewChat);
+
+        // (追加) ページ読み込み完了時に履歴を表示
+        window.addEventListener('load', () => {
+            loadSessionsFromStorage();
+            
+            if (activeSessionId) {
+                const session = chatSessions.find(s => s.id === activeSessionId);
+                if (session) {
+                    currentChatHistory = session.history;
+                } else {
+                    // 保存されてるIDが無効なら新しいチャットを開始
+                    activeSessionId = null;
+                }
+            }
+
+            if (!activeSessionId) {
+                // アクティブなセッションがない場合、新しいチャットを開始
+                startNewChat();
+            } else {
+                // アクティブなセッションをロード
+                loadChatHistoryUI();
+            }
+            
+            renderSessionList();
+        });
+
+
+        // (変更) テキストエリアの自動リサイズ
+        promptInput.addEventListener('input', () => {
+            promptInput.style.height = 'auto'; // 一旦高さをリセット
+            promptInput.style.height = (promptInput.scrollHeight) + 'px'; // スクロール高さを設定
+        });
+
+        // Enterキーでも送信できるようにする
+        promptInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // Enterでの改行を防ぐ
+                sendButton.click(); // 送信ボタンのクリックイベントを発火
+                promptInput.style.height = 'auto'; // 高さをリセット
+            }
+        });
+    </script>
+
+</body>
+</html>
